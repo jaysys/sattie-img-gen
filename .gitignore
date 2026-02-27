@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*/__pycache__/
+*.pyc
+
+.run/
+.DS_Store
+
+data/images/*.png
+data/images/*.jpg
+data/images/*.jpeg
+data/images/*.webp
