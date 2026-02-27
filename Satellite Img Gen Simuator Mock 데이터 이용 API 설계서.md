@@ -2,7 +2,7 @@
 
 - 문서명: Satellite Img Gen Simuator Mock 데이터 이용 API 설계서
 - 프로젝트: satti-sim
-- 버전: v0.3
+- 버전: v0.4
 - 작성일: 2026-02-28
 
 ## 1. 목적
@@ -26,6 +26,8 @@
   - `GET /health`, `GET /`
   - `POST /satellites`, `GET /satellites`, `PATCH /satellites/{id}`, `DELETE /satellites/{id}`
   - `POST /seed/mock-satellites`
+  - `POST /ground-stations`, `GET /ground-stations`, `PATCH /ground-stations/{id}`, `DELETE /ground-stations/{id}`
+  - `POST /seed/mock-ground-stations`
   - `GET /satellite-types`
   - `POST /uplink`
   - `GET /commands`, `GET /commands/{id}`
@@ -72,6 +74,18 @@
 - `AVAILABLE`
 - `MAINTENANCE`
 
+### 4.4 지상국 유형
+
+- `FIXED`
+- `LAND_MOBILE`
+- `MARITIME`
+- `AIRBORNE`
+
+### 4.5 지상국 상태
+
+- `OPERATIONAL`
+- `MAINTENANCE`
+
 ## 5. API별 사용 목적과 요청/응답
 
 모든 보호 API 호출 예시는 `x-api-key` 헤더 기준으로 작성한다.
@@ -91,7 +105,79 @@
 
 - `satellite_ids`: 이번 호출에서 신규 생성된 위성 ID 목록
 
-### 5.2 `GET /satellite-types`
+### 5.2 `POST /seed/mock-ground-stations`
+
+언제 사용하나:
+
+- 업링크 요청 주체(지상국) 목 데이터를 일괄 생성할 때 사용
+- 이미 같은 이름의 지상국이 있으면 중복 생성하지 않음
+
+요청:
+
+- Body 없음
+
+응답:
+
+- `ground_station_ids`: 이번 호출에서 신규 생성된 지상국 ID 목록
+
+### 5.3 `GET /ground-stations`
+
+언제 사용하나:
+
+- 업링크 요청 주체로 사용할 지상국 목록을 조회할 때 사용
+- 운영/테스트에서 지상국 상태를 확인할 때 사용
+
+요청:
+
+- 없음
+
+응답:
+
+- 지상국 배열 (`ground_station_id`, `name`, `type`, `status`, `location`)
+
+### 5.4 `POST /ground-stations`
+
+언제 사용하나:
+
+- Seed 외에 운영자가 지상국을 수동 등록할 때 사용
+
+요청:
+
+- `name`, `type`, `status(기본 OPERATIONAL)`, `location(optional)`
+
+응답:
+
+- `ground_station_id`
+
+### 5.5 `PATCH /ground-stations/{id}`
+
+언제 사용하나:
+
+- 지상국 이름/상태/위치 변경
+
+요청:
+
+- `name` 또는 `status` 또는 `location`
+
+응답:
+
+- 수정된 지상국 객체
+
+### 5.6 `DELETE /ground-stations/{id}`
+
+언제 사용하나:
+
+- 운용대상에서 지상국을 제거할 때 사용
+
+요청:
+
+- Path `ground_station_id`
+
+응답:
+
+- 삭제된 지상국 ID, 이름
+
+### 5.7 `GET /satellite-types`
 
 언제 사용하나:
 
@@ -106,7 +192,7 @@
 
 - `EO_OPTICAL`, `SAR` 키별 프로파일 객체
 
-### 5.3 `POST /satellites`
+### 5.8 `POST /satellites`
 
 언제 사용하나:
 
@@ -120,7 +206,7 @@
 
 - `satellite_id`
 
-### 5.4 `GET /satellites`
+### 5.9 `GET /satellites`
 
 언제 사용하나:
 
@@ -135,7 +221,7 @@
 
 - 위성 배열 (`satellite_id`, `name`, `type`, `status`, `profile`)
 
-### 5.5 `PATCH /satellites/{id}`
+### 5.10 `PATCH /satellites/{id}`
 
 언제 사용하나:
 
@@ -149,7 +235,7 @@
 
 - 수정된 위성 객체
 
-### 5.6 `DELETE /satellites/{id}`
+### 5.11 `DELETE /satellites/{id}`
 
 언제 사용하나:
 
@@ -163,7 +249,7 @@
 
 - 삭제된 위성 ID, 이름
 
-### 5.7 `POST /uplink`
+### 5.12 `POST /uplink`
 
 언제 사용하나:
 
@@ -172,7 +258,7 @@
 
 요청 핵심 필드:
 
-- 식별: `satellite_id`, `mission_name`, `aoi_name`
+- 식별: `satellite_id`, `ground_station_id(optional)`, `mission_name`, `aoi_name`
 - AOI/시간: `aoi_center_lat/lon`, `aoi_bbox`, `window_open_utc`, `window_close_utc`
 - 우선순위: `priority` (`BACKGROUND|COMMERCIAL|URGENT`)
 - 영상 옵션: `width`, `height`, `cloud_percent`
@@ -184,9 +270,9 @@
 
 응답:
 
-- `command_id`, 초기 `state(QUEUED)`, 위성/임무 정보, 생성시각
+- `command_id`, 초기 `state(QUEUED)`, 위성/임무 정보, 지상국 정보, 생성시각
 
-### 5.8 `GET /commands`
+### 5.13 `GET /commands`
 
 언제 사용하나:
 
@@ -198,7 +284,7 @@
 - `CommandStatusResponse[]`
 - 각 항목에 `request_profile`, `acquisition_metadata`, `product_metadata` 포함
 
-### 5.9 `GET /commands/{id}`
+### 5.14 `GET /commands/{id}`
 
 언제 사용하나:
 
@@ -210,7 +296,7 @@
 - 명령 상세 상태
 - 파일이 실제 존재할 때만 `download_url` 노출
 
-### 5.10 `GET /downloads/{id}`
+### 5.15 `GET /downloads/{id}`
 
 언제 사용하나:
 
@@ -223,7 +309,7 @@
   - `404`: 명령 없음 또는 파일 없음
   - `409`: 아직 준비 전
 
-### 5.11 `POST /downloads/{id}/save-local`
+### 5.16 `POST /downloads/{id}/save-local`
 
 언제 사용하나:
 
@@ -233,7 +319,7 @@
 
 - `saved_path`, `file_size_bytes`, `message`
 
-### 5.12 `POST /images/clear`
+### 5.17 `POST /images/clear`
 
 언제 사용하나:
 
@@ -248,6 +334,7 @@
 
 ### 6.1 AOI/시간 필드
 
+- `ground_station_id`: 업링크 요청 지상국 식별자(선택)
 - `aoi_center_lat`, `aoi_center_lon`: 점 기반 AOI 중심
 - `aoi_bbox`: `[min_lon, min_lat, max_lon, max_lat]`
 - `window_open_utc`, `window_close_utc`: ISO8601 UTC 시간창

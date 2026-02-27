@@ -51,6 +51,18 @@ class SatelliteStatus(str, Enum):
     MAINTENANCE = "MAINTENANCE"
 
 
+class GroundStationType(str, Enum):
+    FIXED = "FIXED"
+    LAND_MOBILE = "LAND_MOBILE"
+    MARITIME = "MARITIME"
+    AIRBORNE = "AIRBORNE"
+
+
+class GroundStationStatus(str, Enum):
+    OPERATIONAL = "OPERATIONAL"
+    MAINTENANCE = "MAINTENANCE"
+
+
 class CreateSatelliteRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     type: SatelliteType
@@ -60,6 +72,19 @@ class CreateSatelliteRequest(BaseModel):
 class UpdateSatelliteRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     status: SatelliteStatus | None = None
+
+
+class CreateGroundStationRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    type: GroundStationType
+    status: GroundStationStatus = GroundStationStatus.OPERATIONAL
+    location: str | None = Field(default=None, max_length=120)
+
+
+class UpdateGroundStationRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    status: GroundStationStatus | None = None
+    location: str | None = Field(default=None, max_length=120)
 
 
 class TaskPriority(str, Enum):
@@ -97,6 +122,7 @@ class ExternalMapSource(str, Enum):
 
 class UplinkCommandRequest(BaseModel):
     satellite_id: str
+    ground_station_id: str | None = Field(default=None, min_length=1, max_length=40)
     mission_name: str = Field(min_length=1, max_length=150)
     aoi_name: str = Field(default="unknown-aoi", min_length=1, max_length=120)
     aoi_center_lat: float | None = Field(default=None, ge=-90, le=90)
@@ -175,6 +201,9 @@ class UplinkCommandResponse(BaseModel):
     state: CommandState
     satellite_id: str
     satellite_type: SatelliteType
+    ground_station_id: str | None = None
+    ground_station_name: str | None = None
+    ground_station_type: GroundStationType | None = None
     mission_name: str
     aoi_name: str
     created_at: str
@@ -203,10 +232,25 @@ class SeedSatellitesResponse(BaseModel):
     satellite_ids: list[str]
 
 
+class GroundStationResponse(BaseModel):
+    ground_station_id: str
+    name: str
+    type: GroundStationType
+    status: GroundStationStatus
+    location: str | None
+
+
+class SeedGroundStationsResponse(BaseModel):
+    ground_station_ids: list[str]
+
+
 class CommandStatusResponse(BaseModel):
     command_id: str
     satellite_id: str
     satellite_type: SatelliteType
+    ground_station_id: str | None
+    ground_station_name: str | None
+    ground_station_type: GroundStationType | None
     mission_name: str
     aoi_name: str
     width: int
@@ -242,6 +286,15 @@ class Satellite:
     name: str
     type: SatelliteType
     status: SatelliteStatus
+
+
+@dataclass
+class GroundStation:
+    ground_station_id: str
+    name: str
+    type: GroundStationType
+    status: GroundStationStatus
+    location: str | None
 
 
 @dataclass(frozen=True)
@@ -281,9 +334,10 @@ class Command:
         self.updated_at = datetime.now(UTC)
 
 
-app = FastAPI(title="Virtual Satellite Simulator", version="0.2.0")
+app = FastAPI(title="Virtual Satellite Simulator", version="0.3.0")
 
 satellites: dict[str, Satellite] = {}
+ground_stations: dict[str, GroundStation] = {}
 commands: dict[str, Command] = {}
 store_lock = threading.Lock()
 rate_lock = threading.Lock()
@@ -394,6 +448,29 @@ def seed_default_satellites_locked() -> list[str]:
             status=SatelliteStatus.AVAILABLE,
         )
         seeded_ids.append(sat_id)
+    return seeded_ids
+
+
+def seed_default_ground_stations_locked() -> list[str]:
+    seeded_ids: list[str] = []
+    presets = [
+        ("Daejeon Mission Control Ground Station", GroundStationType.FIXED, "Daejeon"),
+        ("Jeju Maritime Satellite Ground Station", GroundStationType.MARITIME, "Jeju"),
+        ("Incheon Airborne Relay Ground Station", GroundStationType.AIRBORNE, "Incheon"),
+    ]
+    for name, station_type, location in presets:
+        exists = any(station.name == name for station in ground_stations.values())
+        if exists:
+            continue
+        station_id = f"gnd-{uuid.uuid4().hex[:8]}"
+        ground_stations[station_id] = GroundStation(
+            ground_station_id=station_id,
+            name=name,
+            type=station_type,
+            status=GroundStationStatus.OPERATIONAL,
+            location=location,
+        )
+        seeded_ids.append(station_id)
     return seeded_ids
 
 
@@ -614,6 +691,16 @@ def satellite_to_dict(sat: Satellite) -> dict[str, Any]:
     }
 
 
+def ground_station_to_dict(station: GroundStation) -> dict[str, Any]:
+    return {
+        "ground_station_id": station.ground_station_id,
+        "name": station.name,
+        "type": station.type,
+        "status": station.status,
+        "location": station.location,
+    }
+
+
 def run_pipeline(command_id: str) -> None:
     with store_lock:
         command = commands[command_id]
@@ -678,6 +765,7 @@ def build_command_status(command: Command) -> CommandStatusResponse:
     if sat is None:
         raise HTTPException(status_code=404, detail="Satellite not found")
 
+    station = command.request_profile.get("ground_station") or {}
     has_file = command.image_path is not None and command.image_path.exists()
     download_url = f"/downloads/{command.command_id}" if command.state == CommandState.DOWNLINK_READY and has_file else None
 
@@ -685,6 +773,9 @@ def build_command_status(command: Command) -> CommandStatusResponse:
         command_id=command.command_id,
         satellite_id=command.satellite_id,
         satellite_type=sat.type,
+        ground_station_id=station.get("ground_station_id"),
+        ground_station_name=station.get("name"),
+        ground_station_type=station.get("type"),
         mission_name=command.mission_name,
         aoi_name=command.aoi_name,
         width=command.width,
@@ -752,6 +843,60 @@ def delete_satellite(satellite_id: str) -> dict[str, str]:
     return {"deleted_satellite_id": satellite_id, "deleted_name": removed_name}
 
 
+@app.post("/ground-stations")
+def create_ground_station(req: CreateGroundStationRequest) -> dict[str, str]:
+    station_id = f"gnd-{uuid.uuid4().hex[:8]}"
+    station = GroundStation(
+        ground_station_id=station_id,
+        name=req.name,
+        type=req.type,
+        status=req.status,
+        location=req.location,
+    )
+    with store_lock:
+        ground_stations[station_id] = station
+    return {"ground_station_id": station_id}
+
+
+@app.patch("/ground-stations/{ground_station_id}", response_model=GroundStationResponse)
+def update_ground_station(ground_station_id: str, req: UpdateGroundStationRequest) -> GroundStationResponse:
+    with store_lock:
+        station = ground_stations.get(ground_station_id)
+        if station is None:
+            raise HTTPException(status_code=404, detail="Ground station not found")
+        if req.name is not None:
+            station.name = req.name
+        if req.status is not None:
+            station.status = req.status
+        if req.location is not None:
+            station.location = req.location
+        return GroundStationResponse(**ground_station_to_dict(station))
+
+
+@app.delete("/ground-stations/{ground_station_id}")
+def delete_ground_station(ground_station_id: str) -> dict[str, str]:
+    with store_lock:
+        station = ground_stations.get(ground_station_id)
+        if station is None:
+            raise HTTPException(status_code=404, detail="Ground station not found")
+        removed_name = station.name
+        del ground_stations[ground_station_id]
+    return {"deleted_ground_station_id": ground_station_id, "deleted_name": removed_name}
+
+
+@app.post("/seed/mock-ground-stations", response_model=SeedGroundStationsResponse)
+def seed_mock_ground_stations() -> SeedGroundStationsResponse:
+    with store_lock:
+        seeded_ids = seed_default_ground_stations_locked()
+    return SeedGroundStationsResponse(ground_station_ids=seeded_ids)
+
+
+@app.get("/ground-stations", response_model=list[GroundStationResponse])
+def list_ground_stations() -> list[GroundStationResponse]:
+    with store_lock:
+        return [GroundStationResponse(**ground_station_to_dict(station)) for station in ground_stations.values()]
+
+
 @app.post("/seed/mock-satellites", response_model=SeedSatellitesResponse)
 def seed_mock_satellites() -> SeedSatellitesResponse:
     with store_lock:
@@ -788,9 +933,26 @@ def uplink_command(req: UplinkCommandRequest) -> UplinkCommandResponse:
         sat = satellites.get(req.satellite_id)
         if sat is None:
             raise HTTPException(status_code=404, detail="Satellite not found")
+        station = None
+        if req.ground_station_id is not None:
+            station = ground_stations.get(req.ground_station_id)
+            if station is None:
+                raise HTTPException(status_code=404, detail="Ground station not found")
+            if station.status != GroundStationStatus.OPERATIONAL:
+                raise HTTPException(status_code=409, detail="Ground station is not operational")
 
         command_id = f"cmd-{uuid.uuid4().hex[:12]}"
+        ground_station_payload = None
+        if station is not None:
+            ground_station_payload = {
+                "ground_station_id": station.ground_station_id,
+                "name": station.name,
+                "type": station.type.value,
+                "status": station.status.value,
+                "location": station.location,
+            }
         request_profile = {
+            "ground_station": ground_station_payload,
             "aoi_center": (
                 {"lat": req.aoi_center_lat, "lon": req.aoi_center_lon}
                 if req.aoi_center_lat is not None and req.aoi_center_lon is not None
@@ -843,6 +1005,9 @@ def uplink_command(req: UplinkCommandRequest) -> UplinkCommandResponse:
         state=command.state,
         satellite_id=command.satellite_id,
         satellite_type=sat.type,
+        ground_station_id=ground_station_payload["ground_station_id"] if ground_station_payload else None,
+        ground_station_name=ground_station_payload["name"] if ground_station_payload else None,
+        ground_station_type=ground_station_payload["type"] if ground_station_payload else None,
         mission_name=command.mission_name,
         aoi_name=command.aoi_name,
         created_at=now_iso(command.created_at),

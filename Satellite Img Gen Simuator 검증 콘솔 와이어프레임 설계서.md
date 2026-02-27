@@ -117,6 +117,7 @@
 - 생성 모드 토글: `내부생성` / `외부생성`
 - 외부생성 옵션: `external_map_source`, `external_map_zoom`
 - 대상 위성 선택: `/satellites` 기반 드롭다운
+- 요청 지상국 선택: `/ground-stations` 기반 드롭다운 (`ground_station_id`, 없으면 null)
 - 기본 필드: `mission_name`, `aoi_name`, `priority`
 - AOI/시간: `aoi_center_lat/lon`, `aoi_bbox`, `window_open_utc/window_close_utc`
 - 영상/실패 제어: `width`, `height`, `cloud_percent`, `fail_probability`
@@ -187,6 +188,8 @@
 | Health Check | `GET /health` | 서버 생존 확인 | `200`, `{status:"ok"}` |
 | Show Satellite Types Available | `GET /satellite-types` | EO/SAR 유형 안내 | `200`, 타입 프로파일 |
 | Seed Initial Mock Satellites | `POST /seed/mock-satellites` | 한국 위성 시드 생성 | `200`, `satellite_ids` |
+| Seed Initial Mock Ground Stations | `POST /seed/mock-ground-stations` | 업링크 요청 지상국 시드 생성 | `200`, `ground_station_ids` |
+| Ground Stations 목록 조회 | `GET /ground-stations` | 지상국 선택 드롭다운 구성 | `200`, 지상국 배열 |
 | Create Satellite | `POST /satellites` | 위성 수동 등록 | `200`, `satellite_id` |
 | Update Selected | `PATCH /satellites/{id}` | 위성 수정 | `200`, 수정 객체 |
 | Delete | `DELETE /satellites/{id}` | 위성 삭제 | `200`, 삭제 정보 |

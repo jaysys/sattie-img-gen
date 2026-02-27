@@ -13,6 +13,8 @@ This service simulates a satellite that:
 
 - `POST /satellites`: register virtual satellites (`EO_OPTICAL` or `SAR`)
 - `POST /seed/mock-satellites`: create ready-to-use EO/SAR mock satellites
+- `POST /seed/mock-ground-stations`: create ready-to-use mock ground stations
+- `GET /ground-stations`: list available mock ground stations
 - `GET /satellite-types`: view type profiles used for mock response fields
 - `POST /uplink`: send command to a satellite
 - async state transitions:
@@ -94,11 +96,13 @@ If too many requests:
 ### Recommended API flow for clients
 
 1. `POST /seed/mock-satellites` (optional for test initialization)
-2. `GET /satellites` (choose `satellite_id`)
-3. `POST /uplink` (store returned `command_id`)
-4. `GET /commands/{command_id}` polling until `DOWNLINK_READY` or `FAILED`
-5. Read `download_url` from command response when ready
-6. `GET /downloads/{command_id}` using header auth or browser query auth
+2. `POST /seed/mock-ground-stations` (optional for test initialization)
+3. `GET /satellites` (choose `satellite_id`)
+4. `GET /ground-stations` (choose `ground_station_id` when needed)
+5. `POST /uplink` (store returned `command_id`)
+6. `GET /commands/{command_id}` polling until `DOWNLINK_READY` or `FAILED`
+7. Read `download_url` from command response when ready
+8. `GET /downloads/{command_id}` using header auth or browser query auth
 
 ### Retry model (failed command)
 
@@ -126,6 +130,8 @@ Browser-friendly download:
 
 The uplink payload supports business-oriented tasking inputs:
 
+- Uplink requester:
+  - `ground_station_id` (optional, but recommended for traceability)
 - AOI geometry:
   - `aoi_center_lat`, `aoi_center_lon`
   - `aoi_bbox` (`[minLon,minLat,maxLon,maxLat]`)
@@ -165,14 +171,28 @@ curl -s -X POST http://127.0.0.1:6005/seed/mock-satellites \
   -H 'x-api-key: change-me'
 ```
 
-2) Check satellite list with profiles:
+2) Seed mock ground stations:
+
+```bash
+curl -s -X POST http://127.0.0.1:6005/seed/mock-ground-stations \
+  -H 'x-api-key: change-me'
+```
+
+3) Check satellite list with profiles:
 
 ```bash
 curl -s http://127.0.0.1:6005/satellites \
   -H 'x-api-key: change-me'
 ```
 
-3) Send uplink command:
+4) Check ground station list:
+
+```bash
+curl -s http://127.0.0.1:6005/ground-stations \
+  -H 'x-api-key: change-me'
+```
+
+5) Send uplink command:
 
 ```bash
 curl -s -X POST http://127.0.0.1:6005/uplink \
@@ -180,6 +200,7 @@ curl -s -X POST http://127.0.0.1:6005/uplink \
   -H 'Content-Type: application/json' \
   -d '{
     "satellite_id":"sat-xxxxxxx",
+    "ground_station_id":"gnd-xxxxxxx",
     "mission_name":"harbor-monitoring",
     "aoi_name":"busan-port",
     "width":1024,
@@ -189,7 +210,7 @@ curl -s -X POST http://127.0.0.1:6005/uplink \
   }'
 ```
 
-4) Poll status:
+6) Poll status:
 
 ```bash
 curl -s http://127.0.0.1:6005/commands/cmd-xxxxxxxxxxxx \
